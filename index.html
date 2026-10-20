@@ -142,33 +142,44 @@ async function fetchAll(){
   return [...seen.values()];
 }
 
-function dayLabel(d, today){
-  const diff = Math.round((startOfDay(d) - startOfDay(today)) / 86400000);
-  if (diff === 0) return 'Today &middot; ' + fmtDate(d);
-  if (diff === 1) return 'Tomorrow &middot; ' + fmtDate(d);
-  return fmtWeekday(d) + ' &middot; ' + fmtDate(d);
+// All dates/times shown in Malaysia time (MYT, UTC+8, no DST) regardless of the
+// phone's own timezone - matches the "09:44 pm MYT" convention the desktop TV
+// Watch app uses, so a day boundary or an air time never depends on where the
+// phone thinks it is.
+const MYT_TZ = 'Asia/Kuala_Lumpur';
+function mytKey(d){ // -> 'YYYY-MM-DD' calendar date in MYT
+  return new Intl.DateTimeFormat('en-CA', { timeZone: MYT_TZ, year: 'numeric', month: '2-digit', day: '2-digit' }).format(d);
 }
-function startOfDay(d){ return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime(); }
-function fmtDate(d){ return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }); }
-function fmtWeekday(d){ return d.toLocaleDateString(undefined, { weekday: 'long' }); }
-function fmtTime(d){ return d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }); }
+function mytMidnightMs(key){ return Date.parse(key + 'T00:00:00+08:00'); }
+function dayLabel(key, todayKey){
+  const diff = Math.round((mytMidnightMs(key) - mytMidnightMs(todayKey)) / 86400000);
+  if (diff === 0) return 'Today &middot; ' + fmtDate(key);
+  if (diff === 1) return 'Tomorrow &middot; ' + fmtDate(key);
+  return fmtWeekday(key) + ' &middot; ' + fmtDate(key);
+}
+function fmtDate(key){ return new Date(key + 'T12:00:00Z').toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' }); }
+function fmtWeekday(key){ return new Date(key + 'T12:00:00Z').toLocaleDateString('en-US', { weekday: 'long', timeZone: 'UTC' }); }
+function fmtTime(d){
+  const t = new Intl.DateTimeFormat('en-US', { timeZone: MYT_TZ, hour: '2-digit', minute: '2-digit', hour12: true }).format(d);
+  return t.replace('AM', 'am').replace('PM', 'pm') + ' MYT';
+}
 function esc(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 
 function render(items){
   const list = document.getElementById('list');
   if (!items.length) { list.innerHTML = '<div class="empty">Nothing scripted airing in the next ' + WINDOW_DAYS + ' days.</div>'; return; }
-  const today = new Date();
+  const todayKey = mytKey(new Date());
   const groups = new Map();
   for (const it of items) {
-    const key = startOfDay(it.when);
+    const key = mytKey(it.when);
     if (!groups.has(key)) groups.set(key, []);
     groups.get(key).push(it);
   }
-  const keys = [...groups.keys()].sort((a, b) => a - b);
+  const keys = [...groups.keys()].sort();
   let html = '';
   for (const k of keys) {
     const rows = groups.get(k).sort((a, b) => a.when - b.when);
-    html += '<div class="daygroup"><div class="dayhead">' + dayLabel(rows[0].when, today) + '</div>';
+    html += '<div class="daygroup"><div class="dayhead">' + dayLabel(k, todayKey) + '</div>';
     for (const it of rows) {
       const srcBadge = it.source === 'streaming'
         ? '<span class="src stream">STREAM</span>' : '<span class="src bcast">TV</span>';
@@ -196,11 +207,12 @@ async function load(manual){
   if (manual) document.getElementById('list').innerHTML = '<div class="loading">Loading new episodes&hellip;</div>';
   try {
     const now = new Date();
-    const cutoff = new Date(startOfDay(now) + WINDOW_DAYS * 86400000);
+    const windowStart = mytMidnightMs(mytKey(now));
+    const windowEnd = windowStart + WINDOW_DAYS * 86400000;
     const all = await fetchAll();
-    const items = all.filter(it => it.when >= new Date(startOfDay(now)) && it.when < cutoff);
+    const items = all.filter(it => it.when.getTime() >= windowStart && it.when.getTime() < windowEnd);
     render(items);
-    upd.textContent = 'Updated ' + now.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+    upd.textContent = 'Updated ' + fmtTime(now);
   } catch (err) {
     document.getElementById('list').innerHTML = '<div class="err">Could not reach TVmaze.<br>Check your connection.<button onclick="load(true)">Try again</button></div>';
     upd.textContent = 'Update failed';
