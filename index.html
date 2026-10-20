@@ -1,0 +1,219 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="TV VAULT">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#05102E">
+<title>TV VAULT</title>
+<link rel="icon" type="image/png" href="icon.png">
+<link rel="apple-touch-icon" href="icon.png">
+<link rel="manifest" href="manifest.webmanifest">
+<style>
+  /* Nova theme B - Starfleet: uniform blue, gold trim, silver mesh, deep navy. */
+  :root{
+    --bg:#05102E; --panel:rgba(9,30,78,.55); --panel-b:rgba(196,204,216,.14);
+    --ink:#EAF0FF; --muted:#7e93bd; --gold:#DAB048; --gold2:#AA8938;
+    --blue:#2468C8; --silver:#C4CCD8; --line:rgba(196,204,216,.14);
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{margin:0;padding:0}
+  body{background:var(--bg);color:var(--ink);min-height:100vh;
+    font-family:-apple-system,'Segoe UI',system-ui,sans-serif;
+    padding:env(safe-area-inset-top,0px) env(safe-area-inset-right,0px) 40px env(safe-area-inset-left,0px);
+    background-image:radial-gradient(700px 400px at 90% -5%,rgba(218,176,72,.14),transparent 60%)}
+  .wrap{max-width:640px;margin:0 auto;padding:18px 16px 0}
+  header{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:4px;
+    position:sticky;top:0;background:var(--bg);padding:6px 0 10px;z-index:5}
+  h1{font-size:22px;font-weight:800;margin:0;letter-spacing:-.3px}
+  h1 .tv{color:var(--gold)}
+  .sub{color:var(--muted);font-size:12px;margin-top:2px}
+  button{font-family:inherit;cursor:pointer;border:0;background:none}
+  .refresh{background:var(--panel);border:1px solid var(--line);color:var(--ink);
+    font-size:13px;font-weight:700;padding:9px 14px;border-radius:999px;flex:none;display:flex;align-items:center;gap:6px}
+  .refresh:active{transform:scale(.96)}
+  .refresh.spin .ic{animation:spin 0.8s linear infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .daygroup{margin-top:18px}
+  .dayhead{font-size:12px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;
+    color:var(--gold);margin:0 2px 8px}
+  .card{display:flex;gap:12px;align-items:center;background:var(--panel);border:1px solid var(--line);
+    border-radius:14px;padding:10px 12px;margin-bottom:9px;text-decoration:none;color:inherit}
+  .card:active{background:rgba(196,204,216,.10)}
+  .poster{width:46px;height:66px;border-radius:8px;object-fit:cover;background:rgba(196,204,216,.08);flex:none}
+  .info{flex:1;min-width:0}
+  .t{font-weight:700;font-size:15px;line-height:1.25}
+  .se{color:var(--gold);font-weight:800;font-family:Consolas,'SF Mono',monospace;font-size:12.5px}
+  .meta{color:var(--muted);font-size:12px;margin-top:4px;display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+  .chan{display:inline-block;background:rgba(218,176,72,.14);color:var(--gold);font-size:11px;
+    font-weight:700;padding:2px 8px;border-radius:999px}
+  .src{display:inline-block;font-size:9px;font-weight:800;letter-spacing:.4px;padding:2px 6px;
+    border-radius:5px}
+  .src.stream{background:rgba(36,104,200,.22);color:#8fb4ea}
+  .src.bcast{background:rgba(196,204,216,.14);color:var(--silver)}
+  .imdb{flex:none;background:#F5C518;color:#000;font-weight:800;font-size:11px;
+    border-radius:6px;padding:5px 7px;letter-spacing:.2px}
+  .empty,.err,.loading{text-align:center;color:var(--muted);padding:40px 16px;font-size:14px}
+  .err{color:#FFE296}
+  .err button{display:inline-block;margin-top:10px;background:var(--gold);color:#10233F;
+    font-weight:700;font-size:13px;padding:9px 18px;border-radius:999px}
+  .foot{text-align:center;color:var(--muted);font-size:11px;margin-top:28px;line-height:1.6}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div>
+      <h1><span class="tv">TV</span> VAULT</h1>
+      <div class="sub" id="updated">Loading new episodes&hellip;</div>
+    </div>
+    <button class="refresh" id="refreshBtn" onclick="load(true)">
+      <svg class="ic" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M21 12a9 9 0 1 1-3-6.7M21 4v5h-5"/></svg>
+      Refresh
+    </button>
+  </header>
+  <div id="list"><div class="loading">Loading new episodes&hellip;</div></div>
+  <div class="foot">New US scripted TV &middot; next 7 days &middot; animation, China &amp; HK dramas excluded<br>Data: TVmaze &middot; no account, no server, no tracking</div>
+</div>
+<script>
+const WINDOW_DAYS = 7;
+const UA_DATES = (() => { // UTC-day query range wide enough to cover a 7-local-day window from any timezone
+  const out = [], today = new Date();
+  for (let i = -1; i <= WINDOW_DAYS + 1; i++) {
+    const d = new Date(today); d.setUTCDate(today.getUTCDate() + i);
+    out.push(d.toISOString().slice(0, 10));
+  }
+  return out;
+})();
+
+function sleep(ms){ return new Promise(r => setTimeout(r, ms)); }
+
+async function fetchJson(url){
+  const res = await fetch(url);
+  if (!res.ok) { if (res.status === 404) return []; throw new Error('HTTP ' + res.status); }
+  return res.json();
+}
+
+// Map one TVmaze schedule entry -> our shape, or null to drop it.
+function mapEpisode(e, source){
+  const show = e.show || (e._embedded && e._embedded.show);
+  if (!show) return null;
+  if ((show.type || '') !== 'Scripted') return null;           // no animation, no reality/talk/news
+  if (show.language && show.language !== 'English') return null; // keeps CN/HK dramas out too
+  const season = e.season, number = e.number;
+  if (season == null || number == null || season >= 100) return null;
+  if (!e.airstamp) return null;
+  const when = new Date(e.airstamp);
+  if (isNaN(when.getTime())) return null;
+  const channel = (show.network && show.network.name) || (show.webChannel && show.webChannel.name) || 'Unknown';
+  const se = 'S' + String(season).padStart(2, '0') + 'E' + String(number).padStart(2, '0');
+  const imdbId = show.externals && show.externals.imdb;
+  const imdb = imdbId
+    ? 'https://www.imdb.com/title/' + imdbId + '/'
+    : 'https://www.imdb.com/find/?s=tt&ttype=tv&q=' + encodeURIComponent(show.name);
+  return {
+    uid: show.id + '-' + season + '-' + number,
+    show: show.name, se, channel, source, when,
+    image: (show.image && show.image.medium) || null,
+    imdb
+  };
+}
+
+async function fetchAll(){
+  const seen = new Map();
+  for (const d of UA_DATES) {
+    for (const src of [
+      { source: 'broadcast', url: 'https://api.tvmaze.com/schedule?country=US&date=' + d },
+      { source: 'streaming', url: 'https://api.tvmaze.com/schedule/web?date=' + d }
+    ]) {
+      try {
+        const rows = await fetchJson(src.url);
+        for (const e of rows) {
+          const m = mapEpisode(e, src.source);
+          if (m && !seen.has(m.uid)) seen.set(m.uid, m);
+        }
+      } catch (err) { /* one bad date shouldn't kill the rest */ }
+      await sleep(140);
+    }
+  }
+  return [...seen.values()];
+}
+
+function dayLabel(d, today){
+  const diff = Math.round((startOfDay(d) - startOfDay(today)) / 86400000);
+  if (diff === 0) return 'Today &middot; ' + fmtDate(d);
+  if (diff === 1) return 'Tomorrow &middot; ' + fmtDate(d);
+  return fmtWeekday(d) + ' &middot; ' + fmtDate(d);
+}
+function startOfDay(d){ return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime(); }
+function fmtDate(d){ return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }); }
+function fmtWeekday(d){ return d.toLocaleDateString(undefined, { weekday: 'long' }); }
+function fmtTime(d){ return d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }); }
+function esc(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+function render(items){
+  const list = document.getElementById('list');
+  if (!items.length) { list.innerHTML = '<div class="empty">Nothing scripted airing in the next ' + WINDOW_DAYS + ' days.</div>'; return; }
+  const today = new Date();
+  const groups = new Map();
+  for (const it of items) {
+    const key = startOfDay(it.when);
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(it);
+  }
+  const keys = [...groups.keys()].sort((a, b) => a - b);
+  let html = '';
+  for (const k of keys) {
+    const rows = groups.get(k).sort((a, b) => a.when - b.when);
+    html += '<div class="daygroup"><div class="dayhead">' + dayLabel(rows[0].when, today) + '</div>';
+    for (const it of rows) {
+      const srcBadge = it.source === 'streaming'
+        ? '<span class="src stream">STREAM</span>' : '<span class="src bcast">TV</span>';
+      html += `<a class="card" href="${esc(it.imdb)}" target="_blank" rel="noopener">
+        ${it.image ? `<img class="poster" src="${esc(it.image)}" alt="">` : '<div class="poster"></div>'}
+        <div class="info">
+          <div class="t">${esc(it.show)} <span class="se">${esc(it.se)}</span></div>
+          <div class="meta">${srcBadge}<span class="chan">${esc(it.channel)}</span><span>${fmtTime(it.when)}</span></div>
+        </div>
+        <span class="imdb">IMDb</span>
+      </a>`;
+    }
+    html += '</div>';
+  }
+  list.innerHTML = html;
+}
+
+let loading = false;
+async function load(manual){
+  if (loading) return;
+  loading = true;
+  const btn = document.getElementById('refreshBtn');
+  const upd = document.getElementById('updated');
+  btn.classList.add('spin');
+  if (manual) document.getElementById('list').innerHTML = '<div class="loading">Loading new episodes&hellip;</div>';
+  try {
+    const now = new Date();
+    const cutoff = new Date(startOfDay(now) + WINDOW_DAYS * 86400000);
+    const all = await fetchAll();
+    const items = all.filter(it => it.when >= new Date(startOfDay(now)) && it.when < cutoff);
+    render(items);
+    upd.textContent = 'Updated ' + now.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+  } catch (err) {
+    document.getElementById('list').innerHTML = '<div class="err">Could not reach TVmaze.<br>Check your connection.<button onclick="load(true)">Try again</button></div>';
+    upd.textContent = 'Update failed';
+  } finally {
+    btn.classList.remove('spin');
+    loading = false;
+  }
+}
+
+load(false);
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') load(false);
+});
+</script>
+</body>
+</html>

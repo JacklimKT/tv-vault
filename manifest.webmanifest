@@ -1,0 +1,13 @@
+{
+  "name": "TV VAULT",
+  "short_name": "TV VAULT",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#05102E",
+  "theme_color": "#05102E",
+  "icons": [
+    { "src": "icon.png", "type": "image/png", "sizes": "555x556" },
+    { "src": "icon.png", "type": "image/png", "sizes": "555x556", "purpose": "maskable" }
+  ]
+}
